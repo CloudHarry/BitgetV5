@@ -34,7 +34,6 @@ INTERVAL_MINUTES = int(os.getenv("INTERVAL_MINUTES", "15"))
 POSITION_CHECK_SECONDS = int(os.getenv("POSITION_CHECK_SECONDS", "15"))
 
 STATE_FILE = "bot_state_v5.json"
-SLOW_COINS_BLACKLIST = ["BTC/USDT:USDT", "ETH/USDT:USDT", "BNB/USDT:USDT", "USDC/USDT:USDT", "USDT/USDT:USDT"]
 
 client = ccxt.bitget({
     "apiKey": API_KEY, "secret": API_SECRET, "password": API_PASSWORD,
@@ -45,9 +44,26 @@ state = BotState()
 state.mode = "DRY RUN V5" if DRY_RUN else "LIVE V5"
 state.running = True
 
+# ================= FIX LOGGER & TYPO BUGS V5 =================
+if not hasattr(state, 'log'):
+    class SafeLog:
+        def add(self, message, level="INFO"):
+            if hasattr(state, 'logs') and hasattr(state.logs, 'add'):
+                try: 
+                    state.logs.add(message, level)
+                    return
+                except: pass
+            elif hasattr(state, 'logs') and isinstance(state.logs, list):
+                state.logs.append(f"[{level}] {message}")
+                return
+            print(f"[{level}] {message}")
+    state.log = SafeLog()
+# =============================================================
+
 client.load_markets()
-all_symbols = [m['symbol'] for m in client.fetch_markets() if m['linear'] and m['settle'] == 'USDT']
-symbol_list = [sym for sym in all_symbols if sym not in SLOW_COINS_BLACKLIST]
+
+# TARGET PAIR UTAMA (Ubah sesuai dengan koin target harian agar scan berjalan instan)
+symbol_list = ["XAUUSD:USDT", "BTC/USDT:USDT", "ETH/USDT:USDT"]
 
 monitor = Monitor(client, dry_run=DRY_RUN)
 tripwire = TripWire()
@@ -136,6 +152,10 @@ def check_entry_v5(manual=False):
     
     for symbol in symbol_list:
         if active_position: break
+        
+        # Real-time scanning log di layar terminal
+        state.log.add(f"🔍 Memeriksa indikator & konfluensi SMC pada pair: {symbol}", "INFO")
+        time.sleep(0.1)
         
         analyst = TradingBotV5SMC(client, symbol)
         status, setup = analyst.execute_v5_smc_logic()
